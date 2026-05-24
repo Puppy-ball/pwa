@@ -225,7 +225,7 @@
     border: none;
     outline: none;
     background: transparent;
-    font-size: 16px;
+    font-size: 15px;
     font-family: inherit;
     color: var(--text);
     resize: none;
@@ -414,20 +414,32 @@
     <div class="field-group">
       <label class="field-label">选择模型</label>
       <div class="model-grid" id="model-grid">
-        <div class="model-option" data-id="claude-sonnet-4-20250514" data-provider="claude" onclick="selectModel(this)">
-          <div class="m-name">Claude Sonnet 4</div>
+        <div class="model-option" data-id="claude-opus-4-7" data-provider="claude" onclick="selectModel(this)">
+          <div class="m-name">Claude Opus 4.7</div>
+          <div class="m-sub">Anthropic · 最强</div>
+        </div>
+        <div class="model-option" data-id="claude-opus-4-6" data-provider="claude" onclick="selectModel(this)">
+          <div class="m-name">Claude Opus 4.6</div>
           <div class="m-sub">Anthropic</div>
         </div>
-        <div class="model-option" data-id="claude-opus-4-20250514" data-provider="claude" onclick="selectModel(this)">
-          <div class="m-name">Claude Opus 4</div>
-          <div class="m-sub">Anthropic</div>
+        <div class="model-option" data-id="claude-sonnet-4-6" data-provider="claude" onclick="selectModel(this)">
+          <div class="m-name">Claude Sonnet 4.6</div>
+          <div class="m-sub">Anthropic · 均衡</div>
+        </div>
+        <div class="model-option" data-id="claude-haiku-4-5-20251001" data-provider="claude" onclick="selectModel(this)">
+          <div class="m-name">Claude Haiku 4.5</div>
+          <div class="m-sub">Anthropic · 最快</div>
+        </div>
+        <div class="model-option" data-id="gpt-4.1" data-provider="gpt" onclick="selectModel(this)">
+          <div class="m-name">GPT-4.1</div>
+          <div class="m-sub">OpenAI</div>
+        </div>
+        <div class="model-option" data-id="gpt-4.1-mini" data-provider="gpt" onclick="selectModel(this)">
+          <div class="m-name">GPT-4.1 mini</div>
+          <div class="m-sub">OpenAI · 快速</div>
         </div>
         <div class="model-option" data-id="gpt-4o" data-provider="gpt" onclick="selectModel(this)">
           <div class="m-name">GPT-4o</div>
-          <div class="m-sub">OpenAI</div>
-        </div>
-        <div class="model-option" data-id="gpt-4o-mini" data-provider="gpt" onclick="selectModel(this)">
-          <div class="m-name">GPT-4o mini</div>
           <div class="m-sub">OpenAI</div>
         </div>
         <div class="model-option" data-id="gemini-2.5-flash" data-provider="gemini" onclick="selectModel(this)">
@@ -555,10 +567,13 @@ function showError(msg) {
 function updateBadge() {
   const badge = document.getElementById('model-badge');
   const names = {
-    'claude-sonnet-4-20250514': 'Sonnet 4',
-    'claude-opus-4-20250514': 'Opus 4',
+    'claude-opus-4-7': 'Opus 4.7',
+    'claude-opus-4-6': 'Opus 4.6',
+    'claude-sonnet-4-6': 'Sonnet 4.6',
+    'claude-haiku-4-5-20251001': 'Haiku 4.5',
+    'gpt-4.1': 'GPT-4.1',
+    'gpt-4.1-mini': 'GPT-4.1 mini',
     'gpt-4o': 'GPT-4o',
-    'gpt-4o-mini': '4o mini',
     'gemini-2.5-flash': 'Gemini 2.5 Flash',
     'gemini-3-flash-preview': 'Gemini 3 Flash',
   };
