@@ -430,11 +430,11 @@
           <div class="m-name">GPT-4o mini</div>
           <div class="m-sub">OpenAI</div>
         </div>
-        <div class="model-option" data-id="gemini-2.0-flash" data-provider="gemini" onclick="selectModel(this)">
-          <div class="m-name">Gemini 2.0 Flash</div>
+        <div class="model-option" data-id="gemini-2.0-flash-lite" data-provider="gemini" onclick="selectModel(this)">
+          <div class="m-name">Gemini 2.0 Flash Lite</div>
           <div class="m-sub">Google</div>
         </div>
-        <div class="model-option" data-id="gemini-1.5-pro" data-provider="gemini" onclick="selectModel(this)">
+        <div class="model-option" data-id="gemini-1.5-pro-latest" data-provider="gemini" onclick="selectModel(this)">
           <div class="m-name">Gemini 1.5 Pro</div>
           <div class="m-sub">Google</div>
         </div>
@@ -559,8 +559,8 @@ function updateBadge() {
     'claude-opus-4-20250514': 'Opus 4',
     'gpt-4o': 'GPT-4o',
     'gpt-4o-mini': '4o mini',
-    'gemini-2.0-flash': 'Flash 2.0',
-    'gemini-1.5-pro': 'Gemini Pro',
+    'gemini-2.0-flash-lite': 'Flash Lite',
+    'gemini-1.5-pro-latest': 'Gemini Pro',
   };
   document.getElementById('badge-text').textContent = names[state.model] || state.model;
   badge.className = 'model-badge provider-' + state.provider;
