@@ -616,23 +616,17 @@ async function sendMessage() {
       bubble.classList.remove('typing');
       bubble.innerHTML = '';
     }
-    fullText += charQueue.splice(0, 1).join('');
+    fullText += charQueue.splice(0, 2).join('');
     bubble.textContent = fullText;
     document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
     requestAnimationFrame(flushQueue);
   };
 
   try {
-  const onChunk = chunk => {
-    charQueue.push(...chunk.split(''));
-    if (!animating) { animating = true; requestAnimationFrame(flushQueue); }
-  };
-  fullText += chunk;
-  requestAnimationFrame(() => {
-    bubble.textContent = fullText;
-    document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
-  });
-};
+    const onChunk = chunk => {
+      charQueue.push(...chunk.split(''));
+      if (!animating) { animating = true; requestAnimationFrame(flushQueue); }
+    };
 
     let result;
     if (state.provider === 'claude') result = await streamClaude(onChunk, abortController.signal);
