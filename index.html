@@ -608,9 +608,25 @@ async function sendMessage() {
   const { bubble, meta } = createStreamBubble();
   abortController = new AbortController();
   let fullText = '';
+  let charQueue = [];
+  let animating = false;
+  const flushQueue = () => {
+    if (charQueue.length === 0) { animating = false; return; }
+    if (bubble.classList.contains('typing')) {
+      bubble.classList.remove('typing');
+      bubble.innerHTML = '';
+    }
+    fullText += charQueue.splice(0, 1).join('');
+    bubble.textContent = fullText;
+    document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+    requestAnimationFrame(flushQueue);
+  };
 
   try {
-    const onChunk = chunk => {
+  const onChunk = chunk => {
+    charQueue.push(...chunk.split(''));
+    if (!animating) { animating = true; requestAnimationFrame(flushQueue); }
+  };
   fullText += chunk;
   requestAnimationFrame(() => {
     bubble.textContent = fullText;
@@ -662,7 +678,8 @@ function createStreamBubble() {
   el.className = 'msg assistant';
 
   const bubble = document.createElement('div');
-  bubble.className = 'bubble';
+  bubble.className = 'bubble typing';
+  bubble.innerHTML = '<span></span><span></span><span></span>';
   el.appendChild(bubble);
 
   const meta = document.createElement('div');
