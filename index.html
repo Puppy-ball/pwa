@@ -588,6 +588,8 @@ function enableInput() {
 }
 
 // ── Chat ──
+let abortController = null;
+
 async function sendMessage() {
   if (state.loading) return;
   const inp = document.getElementById('input');
@@ -598,29 +600,81 @@ async function sendMessage() {
   state.history.push({ role: 'user', content: text });
   inp.value = '';
   inp.style.height = 'auto';
-  document.getElementById('send-btn').classList.remove('active');
   hideEmpty();
 
   state.loading = true;
-  const typingEl = showTyping();
+  setSendBtn('stop');
+
+  const { bubble, meta } = createStreamBubble();
+  abortController = new AbortController();
+  let fullText = '';
 
   try {
-    let reply = '';
-    if (state.provider === 'claude') reply = await callClaude();
-    else if (state.provider === 'gpt') reply = await callGPT();
-    else if (state.provider === 'gemini') reply = await callGemini();
+    const onChunk = chunk => {
+      fullText += chunk;
+      bubble.textContent = fullText;
+      const wrap = document.getElementById('messages');
+      wrap.scrollTop = wrap.scrollHeight;
+    };
 
-    typingEl.remove();
-    appendMsg('assistant', reply, state.model);
-    state.history.push({ role: 'assistant', content: reply });
+    let result;
+    if (state.provider === 'claude') result = await streamClaude(onChunk, abortController.signal);
+    else if (state.provider === 'gpt') result = await streamGPT(onChunk, abortController.signal);
+    else if (state.provider === 'gemini') result = await streamGemini(onChunk, abortController.signal);
+
+    const u = result?.usage;
+    meta.textContent = state.model + (u ? ` · ${u.input}↑ ${u.output}↓` : '');
+    if (fullText) state.history.push({ role: 'assistant', content: fullText });
   } catch (e) {
-    typingEl.remove();
-    appendMsg('assistant', '⚠ ' + (e.message || '请求失败，请检查 API Key 或网络'));
+    if (e.name === 'AbortError') {
+      meta.textContent = state.model + ' · 已停止';
+      if (fullText) state.history.push({ role: 'assistant', content: fullText });
+    } else {
+      bubble.textContent = '⚠ ' + (e.message || '请求失败，请检查 API Key 或网络');
+      meta.textContent = state.model;
+    }
   }
+
   state.loading = false;
+  abortController = null;
+  setSendBtn('send');
 }
 
-async function callClaude() {
+function setSendBtn(mode) {
+  const btn = document.getElementById('send-btn');
+  if (mode === 'stop') {
+    btn.classList.add('active');
+    btn.style.background = '#b34040';
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>`;
+    btn.onclick = () => { if (abortController) abortController.abort(); };
+  } else {
+    btn.style.background = '';
+    btn.classList.remove('active');
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`;
+    btn.onclick = sendMessage;
+  }
+}
+
+function createStreamBubble() {
+  const wrap = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'msg assistant';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  el.appendChild(bubble);
+
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta';
+  meta.textContent = state.model + ' …';
+  el.appendChild(meta);
+
+  wrap.appendChild(el);
+  wrap.scrollTop = wrap.scrollHeight;
+  return { el, bubble, meta };
+}
+
+async function streamClaude(onChunk, signal) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -629,64 +683,101 @@ async function callClaude() {
       'content-type': 'application/json',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
-    body: JSON.stringify({
-      model: state.model,
-      max_tokens: 2048,
-      messages: state.history,
-    }),
+    body: JSON.stringify({ model: state.model, max_tokens: 2048, stream: true, messages: state.history }),
+    signal,
   });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message || `HTTP ${res.status}`);
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error?.message || `HTTP ${res.status}`); }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let usage = null, buf = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n'); buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const obj = JSON.parse(line.slice(6));
+        if (obj.type === 'content_block_delta' && obj.delta?.text) onChunk(obj.delta.text);
+        if (obj.type === 'message_start') usage = { input: obj.message?.usage?.input_tokens || 0, output: 0 };
+        if (obj.type === 'message_delta' && obj.usage) usage = { ...usage, output: obj.usage.output_tokens };
+      } catch {}
+    }
   }
-  const d = await res.json();
-  return d.content?.[0]?.text || '';
+  return { usage };
 }
 
-async function callGPT() {
+async function streamGPT(onChunk, signal) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + state.keys.gpt,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: state.model,
-      messages: state.history,
-    }),
+    headers: { 'Authorization': 'Bearer ' + state.keys.gpt, 'content-type': 'application/json' },
+    body: JSON.stringify({ model: state.model, stream: true, stream_options: { include_usage: true }, messages: state.history }),
+    signal,
   });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message || `HTTP ${res.status}`);
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error?.message || `HTTP ${res.status}`); }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let usage = null, buf = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n'); buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') continue;
+      try {
+        const obj = JSON.parse(data);
+        const delta = obj.choices?.[0]?.delta?.content;
+        if (delta) onChunk(delta);
+        if (obj.usage) usage = { input: obj.usage.prompt_tokens, output: obj.usage.completion_tokens };
+      } catch {}
+    }
   }
-  const d = await res.json();
-  return d.choices?.[0]?.message?.content || '';
+  return { usage };
 }
 
-async function callGemini() {
-  // Convert history to Gemini format
+async function streamGemini(onChunk, signal) {
   const contents = state.history.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent?key=${state.keys.gemini}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ contents }),
-    }
+    `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:streamGenerateContent?alt=sse&key=${state.keys.gemini}`,
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contents }), signal }
   );
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message || `HTTP ${res.status}`);
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error?.message || `HTTP ${res.status}`); }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let usage = null, buf = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n'); buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const obj = JSON.parse(line.slice(6));
+        const text = obj.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) onChunk(text);
+        if (obj.usageMetadata) usage = { input: obj.usageMetadata.promptTokenCount || 0, output: obj.usageMetadata.candidatesTokenCount || 0 };
+      } catch {}
+    }
   }
-  const d = await res.json();
-  return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return { usage };
 }
 
 // ── UI helpers ──
-function appendMsg(role, text, model) {
+function appendMsg(role, text) {
   const wrap = document.getElementById('messages');
   const el = document.createElement('div');
   el.className = 'msg ' + role;
@@ -696,25 +787,8 @@ function appendMsg(role, text, model) {
   bubble.textContent = text;
   el.appendChild(bubble);
 
-  if (role === 'assistant' && model) {
-    const meta = document.createElement('div');
-    meta.className = 'msg-meta';
-    meta.textContent = model;
-    el.appendChild(meta);
-  }
-
   wrap.appendChild(el);
   wrap.scrollTop = wrap.scrollHeight;
-}
-
-function showTyping() {
-  const wrap = document.getElementById('messages');
-  const el = document.createElement('div');
-  el.className = 'msg assistant';
-  el.innerHTML = '<div class="bubble typing"><span></span><span></span><span></span></div>';
-  wrap.appendChild(el);
-  wrap.scrollTop = wrap.scrollHeight;
-  return el;
 }
 
 function hideEmpty() {
